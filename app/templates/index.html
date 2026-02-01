@@ -1,0 +1,482 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<header class="hero">
+  <div>
+    <p class="eyebrow">Consent Management + TN</p>
+    <h1>Transaction Notifications Demo Console</h1>
+    <p class="lead">
+      Enroll cards, run hosted consent UI, and monitor notifications. Test data stays local
+      and only last-four digits are shown.
+    </p>
+    <div class="hero-actions"></div>
+  </div>
+  <div class="hero-card">
+    <div class="stat">
+      <span class="stat-label">Enrolled cards</span>
+      <span class="stat-value">{{ enrollments | length }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Transactions posted</span>
+      <span class="stat-value">{{ transactions | length }}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Notifications received</span>
+      <span class="stat-value">{{ notifications_total }}</span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Demo sections">
+  <button
+    class="tab {% if active_tab == 'enroll' %}is-active{% endif %}"
+    data-tab="enroll"
+    type="button"
+    aria-selected="{% if active_tab == 'enroll' %}true{% else %}false{% endif %}"
+  >
+    Enroll
+  </button>
+  <button
+    class="tab {% if active_tab == 'post' %}is-active{% endif %}"
+    data-tab="post"
+    type="button"
+    aria-selected="{% if active_tab == 'post' %}true{% else %}false{% endif %}"
+  >
+    Post Transaction
+  </button>
+  <button
+    class="tab {% if active_tab == 'dashboard' %}is-active{% endif %}"
+    data-tab="dashboard"
+    type="button"
+    aria-selected="{% if active_tab == 'dashboard' %}true{% else %}false{% endif %}"
+  >
+    Dashboard
+  </button>
+</nav>
+
+<section id="tab-enroll" class="panel {% if active_tab == 'enroll' %}is-active{% endif %}">
+  <div class="panel-grid">
+    <div class="panel-card">
+      <h2>Enroll via API</h2>
+      <p class="muted">Submit a test card to the Consent API. PAN/CVC are never persisted.</p>
+      <form id="api-enroll-form" class="stack" autocomplete="off">
+        <div>
+          <label for="test-card-select">Test cards (sandbox)</label>
+          <select id="test-card-select">
+            <option value="" selected>Choose a test card</option>
+            {% for card in test_cards %}
+              <option value="{{ loop.index0 }}">{{ card.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label for="cardholder_name">Cardholder name</label>
+            <input id="cardholder_name" name="cardholder_name" type="text" required>
+          </div>
+          <div>
+            <label for="pan">PAN (16 digits)</label>
+            <input id="pan" name="pan" type="text" inputmode="numeric" pattern="\d{16}" required>
+          </div>
+          <div>
+            <label for="expiry_month">Expiry month</label>
+            <input id="expiry_month" name="expiry_month" type="number" inputmode="numeric" min="1" max="12" required>
+          </div>
+          <div>
+            <label for="expiry_year">Expiry year</label>
+            <input id="expiry_year" name="expiry_year" type="number" inputmode="numeric" min="2021" required>
+          </div>
+          <div>
+            <label for="cvc">CVC</label>
+            <input id="cvc" name="cvc" type="password" inputmode="numeric" pattern="\d{3}" required>
+          </div>
+        </div>
+        <input type="hidden" name="consent_name" value="notification">
+        <button class="btn" type="submit">Enroll via API</button>
+        <div id="api-enroll-result" class="form-result muted">Awaiting submission.</div>
+      </form>
+    </div>
+    <div class="panel-card">
+      <h2>Hosted Consent UI</h2>
+      <p class="muted">
+        Launch Mastercard Consent UI in this browser. Complete the flow, then return here to
+        verify enrollment status.
+      </p>
+      <div class="stack">
+        <a class="btn" href="/enroll/ui/start">Open hosted consent UI</a>
+        <p class="muted">If a login or consent screen appears, follow it to completion.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tab-post" class="panel {% if active_tab == 'post' %}is-active{% endif %}">
+  <div class="panel-grid">
+    <div class="panel-card">
+      <h2>Post a transaction</h2>
+      <p class="muted">Choose an enrolled card and send a transaction notification payload.</p>
+      <form class="stack" method="post" action="/transactions">
+        <div>
+          <label for="consent_id">Enrolled card</label>
+          <select id="consent_id" name="consent_id" required {% if not enrollments %}disabled{% endif %}>
+            {% if enrollments %}
+              <option value="" selected disabled>Select an enrollment</option>
+              {% for enrollment in enrollments %}
+                {% set label = enrollment.get('card_alias') or enrollment.get('card_reference') or enrollment.get('consent_id') %}
+                {% set value = enrollment.get('card_reference') or enrollment.get('consent_id') %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="" selected>No enrollments yet</option>
+            {% endif %}
+          </select>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label for="amount">Amount</label>
+            <input id="amount" name="amount" type="number" step="0.01" placeholder="12.00" required>
+          </div>
+          <div>
+            <label for="currency">Currency</label>
+            <input id="currency" name="currency" type="text" value="USD" required>
+          </div>
+          <div>
+            <label for="merchant">Merchant</label>
+            <input id="merchant" name="merchant" type="text" placeholder="Demo Store" required>
+          </div>
+        </div>
+        <button class="btn" type="submit" {% if not enrollments %}disabled{% endif %}>Post transaction</button>
+        {% if not enrollments %}
+          <p class="muted">Enroll a card first to enable transaction posting.</p>
+        {% endif %}
+        {% if post_result %}
+          <div class="form-result {% if post_result.success %}success{% else %}error{% endif %}">
+            {{ post_result.message }}
+            {% if post_result.correlation_id %}(correlation {{ post_result.correlation_id }}){% endif %}
+          </div>
+        {% endif %}
+      </form>
+    </div>
+    <div class="panel-card">
+      <h3>Recent transactions</h3>
+      {% if transactions %}
+        <table>
+          <thead>
+            <tr>
+              <th>Consent</th>
+              <th>Amount</th>
+              <th>Reference #</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for txn in transactions[:5] %}
+              <tr>
+                <td>{{ txn.get('consent_id') or txn.get('id') or 'n/a' }}</td>
+                <td>{{ txn.get('amount') or 'n/a' }} {{ txn.get('currency') or '' }}</td>
+                <td>{{ txn.get('reference_number') or txn.get('system_trace_audit_number') or 'n/a' }}</td>
+                <td><span class="pill">{{ txn.get('status') or 'queued' }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="table-empty">No transactions posted yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section id="tab-dashboard" class="panel {% if active_tab == 'dashboard' %}is-active{% endif %}">
+  <div class="panel-grid">
+    <div class="panel-card">
+      <h2>Enrolled cards</h2>
+      <div class="hero-actions">
+        <button class="btn ghost" type="button" id="refresh-dashboard">Refresh data</button>
+        <span class="muted" id="refresh-status"></span>
+      </div>
+      {% if enrollments %}
+        <table>
+          <thead>
+            <tr>
+              <th>Alias</th>
+              <th>Status</th>
+              <th>Last 4</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for enrollment in enrollments %}
+              <tr>
+                <td>{{ enrollment.get('card_alias') or enrollment.get('card_reference') or 'Hosted UI' }}</td>
+                <td><span class="pill">{{ enrollment.get('status') or 'unknown' }}</span></td>
+                <td>{{ enrollment.get('pan_last4') or 'n/a' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="table-empty">No enrollments yet. Start with API or hosted UI enrollment.</div>
+      {% endif %}
+    </div>
+    <div class="panel-card span-2">
+      <h2>Notifications</h2>
+      <p class="muted">
+        Showing {{ notifications_page_start }}-{{ notifications_page_end }}
+        of {{ notifications_filtered_total }} ({{ notifications_filter_label }}).
+      </p>
+      {% if notifications %}
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Event</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for note in notifications %}
+                <tr>
+                  {% set card_ref = note.get('card_reference') or note.get('consent_id') %}
+                  <td>{{ card_labels.get(card_ref) or card_ref or 'n/a' }}</td>
+                <td>
+                  {% if note.get('merchant') %}
+                    {{ note.get('merchant') }}
+                  {% elif note.get('encrypted_payload') %}
+                    Encrypted
+                  {% else %}
+                    n/a
+                  {% endif %}
+                </td>
+                <td>
+                  {% if note.get('amount') %}
+                    {{ note.get('amount') }} {{ note.get('currency') or '' }}
+                  {% elif note.get('encrypted_payload') %}
+                    Encrypted
+                  {% else %}
+                    n/a
+                  {% endif %}
+                </td>
+                  <td>{{ note.get('event_time') or note.get('received_at') or note.get('created_at') or 'n/a' }}</td>
+                  <td><span class="pill">{{ note.get('status') or 'received' }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if notifications_page_total > 1 %}
+          <div class="hero-actions">
+            {% if notifications_page > 1 %}
+              <a class="btn ghost" href="/?tab=dashboard&notif_page={{ notifications_page - 1 }}">Previous</a>
+            {% endif %}
+            <span class="muted">Page {{ notifications_page }} of {{ notifications_page_total }}</span>
+            {% if notifications_page < notifications_page_total %}
+              <a class="btn ghost" href="/?tab=dashboard&notif_page={{ notifications_page + 1 }}">Next</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% else %}
+        {% if notifications_filter_active %}
+          <div class="table-empty">No UI-posted notifications yet. Post a transaction to generate one.</div>
+        {% else %}
+          <div class="table-empty">No notifications received yet.</div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</section>
+<div id="three-ds-overlay" class="modal-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-window">
+    <div class="modal-header">
+      <h3>3DS Authentication</h3>
+      <button class="btn ghost" type="button" id="three-ds-close">Close</button>
+    </div>
+    <div class="modal-body">
+      <iframe id="three-ds-frame" class="modal-iframe" title="3DS Authentication"></iframe>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const panels = Array.from(document.querySelectorAll(".panel"));
+
+    function setActiveTab(name) {
+      tabs.forEach((tab) => {
+        const isActive = tab.dataset.tab === name;
+        tab.classList.toggle("is-active", isActive);
+        tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      panels.forEach((panel) => {
+        panel.classList.toggle("is-active", panel.id === `tab-${name}`);
+      });
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => setActiveTab(tab.dataset.tab));
+    });
+
+    const apiForm = document.getElementById("api-enroll-form");
+    const resultEl = document.getElementById("api-enroll-result");
+    const threeDSOverlay = document.getElementById("three-ds-overlay");
+    const threeDSFrame = document.getElementById("three-ds-frame");
+    const threeDSClose = document.getElementById("three-ds-close");
+
+    function openThreeDS(url) {
+      if (!threeDSOverlay || !threeDSFrame) {
+        window.location.href = url;
+        return;
+      }
+      threeDSFrame.src = url;
+      threeDSOverlay.classList.add("is-active");
+      threeDSOverlay.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeThreeDS({ refresh = false } = {}) {
+      if (!threeDSOverlay || !threeDSFrame) {
+        return;
+      }
+      threeDSOverlay.classList.remove("is-active");
+      threeDSOverlay.setAttribute("aria-hidden", "true");
+      threeDSFrame.src = "about:blank";
+      document.body.style.overflow = "";
+      if (refresh) {
+        window.location.href = "/?tab=dashboard";
+      }
+    }
+
+    if (threeDSClose) {
+      threeDSClose.addEventListener("click", () => closeThreeDS({ refresh: false }));
+    }
+
+    window.addEventListener("message", (event) => {
+      if (!event.data || event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data.type !== "threeDSComplete") {
+        return;
+      }
+      if (resultEl) {
+        resultEl.textContent = event.data.success
+          ? "3DS authentication completed. Enrollment approved."
+          : "3DS authentication failed. See the overlay for details.";
+        resultEl.className = `form-result ${event.data.success ? "success" : "error"}`;
+      }
+      if (event.data.success) {
+        closeThreeDS({ refresh: true });
+      }
+    });
+
+    if (apiForm && resultEl) {
+      apiForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        resultEl.textContent = "Submitting enrollment...";
+        resultEl.className = "form-result";
+
+        const formData = new FormData(apiForm);
+        const payload = {};
+        formData.forEach((value, key) => {
+          payload[key] = value;
+        });
+
+        let shouldRefresh = false;
+        try {
+          const response = await fetch("/enroll/api", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (data.success) {
+            if (data.auth_required && data.redirect_url) {
+              resultEl.textContent = "3DS authentication required. Continue in the overlay.";
+              resultEl.className = "form-result";
+              openThreeDS(data.redirect_url);
+              return;
+            }
+            resultEl.textContent = data.message || "Enrollment completed.";
+            resultEl.className = "form-result success";
+            shouldRefresh = true;
+          } else {
+            const suffix = data.correlation_id ? ` (correlation ${data.correlation_id})` : "";
+            resultEl.textContent = `${data.message || "Enrollment failed."}${suffix}`;
+            resultEl.className = "form-result error";
+          }
+        } catch (err) {
+          resultEl.textContent = "Enrollment failed. Check network connectivity.";
+          resultEl.className = "form-result error";
+        } finally {
+          ["pan", "cvc"].forEach((field) => {
+            const input = apiForm.querySelector(`[name="${field}"]`);
+            if (input) {
+              input.value = "";
+            }
+          });
+          const testSelect = document.getElementById("test-card-select");
+          if (testSelect) {
+            testSelect.value = "";
+          }
+          if (shouldRefresh) {
+            setTimeout(() => {
+              window.location.href = "/?tab=dashboard";
+            }, 900);
+          }
+        }
+      });
+    }
+
+    const testCards = {{ test_cards | tojson }};
+    const testSelect = document.getElementById("test-card-select");
+    if (testSelect) {
+      testSelect.addEventListener("change", () => {
+        const idx = Number(testSelect.value);
+        if (Number.isNaN(idx)) {
+          return;
+        }
+        const card = testCards[idx];
+        if (!card) {
+          return;
+        }
+        document.getElementById("cardholder_name").value = card.cardholder_name || "";
+        document.getElementById("pan").value = card.pan || "";
+        document.getElementById("expiry_month").value = card.expiry_month || "";
+        document.getElementById("expiry_year").value = card.expiry_year || "";
+        document.getElementById("cvc").value = card.cvc || "";
+      });
+    }
+
+    const refreshBtn = document.getElementById("refresh-dashboard");
+    const refreshStatus = document.getElementById("refresh-status");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = true;
+        if (refreshStatus) {
+          refreshStatus.textContent = "Checking undelivered notifications...";
+        }
+        try {
+          const resp = await fetch("/notifications/undelivered");
+          const data = await resp.json().catch(() => null);
+          if (refreshStatus) {
+            refreshStatus.textContent = data?.message || "Notifications refreshed.";
+          }
+          if (resp.ok) {
+            window.location.href = "/?tab=dashboard";
+            return;
+          }
+        } catch (err) {
+          if (refreshStatus) {
+            refreshStatus.textContent = "Failed to fetch notifications.";
+          }
+        }
+        refreshBtn.disabled = false;
+      });
+    }
+  })();
+</script>
+{% endblock %}

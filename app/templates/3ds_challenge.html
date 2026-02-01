@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="panel is-active">
+  <h2>3DS Challenge</h2>
+  <p class="muted">
+    Complete the 3DS challenge in the iframe below. When finished, this page will automatically verify the result.
+  </p>
+  <div id="challenge-container"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='3ds_challenge.js') }}"></script>
+<script>
+  window.onload = function () {
+    doChallenge("{{ acs_url }}", "{{ encoded_creq }}", "{{ state }}");
+  };
+</script>
+{% endblock %}

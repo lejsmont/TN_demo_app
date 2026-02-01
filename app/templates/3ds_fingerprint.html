@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="panel is-active">
+  <h2>3DS Fingerprinting</h2>
+  <p class="muted">
+    We are collecting device information required for authentication. This uses a hidden iframe and will
+    automatically continue when complete.
+  </p>
+  <p class="muted">Do not close this page.</p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='3ds_fingerprint.js') }}"></script>
+<script>
+  window.onload = function () {
+    doFingerprint(
+      "{{ three_ds_method_url }}",
+      "{{ three_ds_method_notification_url }}",
+      "{{ three_ds_method_data }}",
+      "{{ three_ds_server_trans_id }}",
+      "{{ state }}",
+      "{{ start_auth_url }}"
+    );
+  };
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<section class="panel is-active">
+  <h2>3DS Authentication {{ "Complete" if success else "Failed" }}</h2>
+  <p class="muted">{{ message }}</p>
+  {% if details %}
+    <pre class="form-result">{{ details }}</pre>
+  {% endif %}
+  <div class="hero-actions">
+    <a class="btn" href="/?tab=dashboard">Go to Dashboard</a>
+    <a class="btn ghost" href="/?tab=enroll">Back to Enroll</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        { type: "threeDSComplete", success: {{ "true" if success else "false" }} },
+        window.location.origin
+      );
+    }
+  });
+</script>
+{% endblock %}
